@@ -20,7 +20,14 @@ python rocket.py
 This flies the rocket defined by `MOCK_ROCKET`, prints a summary and shows the
 trajectory in 3D.
 
+```bash
+python monte_carlo.py
+```
+
+This flies 1000 rockets with scattered inputs and shows where they land.
+
 ## Files
 
 - `rocket.py`: the flight model. `simulate(params)` flies one rocket and returns the results.
+- `monte_carlo.py`: the Monte Carlo. It scatters the inputs, calls `simulate` many times and collects the impact points.
 - `requirements.txt`: the libraries the project needs.

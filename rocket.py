@@ -17,7 +17,7 @@ MOCK_ROCKET = {
     "propellant_mass": 600.0,    # kg
     "thrust": 20000.0,           # N
     "specific_impulse": 20000.0 / (30.0 * STANDARD_GRAVITY),  # s, about 68: the value that makes this engine burn 30 kg/s
-    "launch_elevation": 45.0,    # degrees above the horizon
+    "launch_elevation": 80.0,    # degrees above the horizon
     "launch_azimuth": 45.0,      # degrees clockwise from north
     "ramp_length": 10.0,         # m
     "drag_coefficient": 0.75,    # dimensionless

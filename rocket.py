@@ -1,5 +1,7 @@
 """3DOF point-mass rocket: one flight from the ramp to the impact."""
 
+import warnings
+
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
@@ -26,6 +28,9 @@ MOCK_ROCKET = {
 SOLVER_TOLERANCE = 1e-6
 MAX_FLIGHT_TIME = 1000.0  # s, upper limit for the coast phase
 
+# there is always a ramp: in flight the thrust follows the velocity, and the ramp gives the rocket its first one
+MIN_RAMP_LENGTH = 3.0  # m
+
 
 def direction_from_angles(elevation, azimuth):
     """Unit vector [east, north, up] for an elevation and an azimuth in degrees."""
@@ -47,14 +52,20 @@ def derivative(t, state, thrust, mdot, on_ramp, launch_direction, params):
     speed = np.linalg.norm(velocity)
     m = state[-1]
 
+    if on_ramp or speed == 0.0:
+        thrust_direction = launch_direction  # on the ramp, or at rest, there is no velocity to follow this should happen only on ramp
+    else:
+        thrust_direction = velocity / speed  # in flight the thrust follows the velocity
+
     drag = (-0.5 * air_density(state[2], params) * speed
             * params["drag_coefficient"] * params["reference_area"] * velocity)
-    acceleration = (drag + thrust * launch_direction) / m
+    acceleration = (drag + thrust * thrust_direction) / m
     acceleration[2] -= params["gravity"]
 
     if on_ramp:
         # bolted to the ramp: keep only the part of the acceleration that points along it
-        acceleration = np.dot(acceleration, launch_direction) * launch_direction
+        # max(..., 0.0): the bottom of the ramp holds the rocket, so it cannot slide backwards
+        acceleration = max(np.dot(acceleration, launch_direction), 0.0) * launch_direction
 
     return [*velocity, *acceleration, -mdot]
 
@@ -82,6 +93,9 @@ leave_ramp.direction = 1  # distance going from shorter to longer than the ramp
 
 
 def simulate(params):
+    if params["ramp_length"] < MIN_RAMP_LENGTH:
+        raise ValueError(f"ramp_length must be at least {MIN_RAMP_LENGTH} m")
+
     launch_direction = direction_from_angles(params["launch_elevation"], params["launch_azimuth"])
     thrust = params["thrust"]
     mdot = params["mass_flow_rate"]
@@ -96,6 +110,11 @@ def simulate(params):
                      events=[leave_ramp], args=(thrust, mdot, True, launch_direction, params),
                      rtol=SOLVER_TOLERANCE, atol=SOLVER_TOLERANCE, dense_output=True)
 
+    # no leave_ramp event: the thrust never beat the weight, so there is no flight to return
+    if len(ramp.t_events[0]) == 0:
+        warnings.warn("the rocket never left the ramp, flight discarded")
+        return None
+
     ramp_exit_time = ramp.t_events[0][0]
     ramp_exit_state = ramp.y_events[0][0]
 
@@ -103,31 +122,55 @@ def simulate(params):
                      events=[hit_ground, apogee], args=(thrust, mdot, False, launch_direction, params),
                      rtol=SOLVER_TOLERANCE, atol=SOLVER_TOLERANCE, dense_output=True)
                      
-    burnout_state = burn.y[:, -1]
+    # status 1 means a terminal event stopped the run, here hit_ground: the rocket
+    # nosed into the ground with the engine still on, so there is no burnout and no coast
+    hit_ground_during_burn = burn.status == 1
 
-    coast = solve_ivp(derivative, (burn_time, MAX_FLIGHT_TIME), burnout_state,
-                      events=[hit_ground, apogee], args=(0.0, 0.0, False, launch_direction, params),
-                      rtol=SOLVER_TOLERANCE, atol=SOLVER_TOLERANCE, dense_output=True)
+    if hit_ground_during_burn:
+        burnout_time = None
+        burnout_state = None
+        last_phase = burn
+    else:
+        burnout_time = burn_time
+        burnout_state = burn.y[:, -1]
+        coast = solve_ivp(derivative, (burn_time, MAX_FLIGHT_TIME), burnout_state,
+                          events=[hit_ground, apogee], args=(0.0, 0.0, False, launch_direction, params),
+                          rtol=SOLVER_TOLERANCE, atol=SOLVER_TOLERANCE, dense_output=True)
+        last_phase = coast
+
     # t_events / y_events are indexed like the events list: [0] = hit_ground, [1] = apogee
-    impact_time = coast.t_events[0][0]
+    impact_time = last_phase.t_events[0][0]
+    impact_state = last_phase.y_events[0][0]
+
+    # the rocket can tip over and start falling with the engine still on,
+    # so the apogee is looked for in the burn phase first
+    if len(burn.t_events[1]) > 0:
+        apogee_phase = burn
+    else:
+        apogee_phase = coast
 
     # time history of the whole flight; .sol gives the state at any time, not only at the solver's few steps
     # endpoint=False leaves out the last time of a phase, because the next phase starts with it
     t_ramp = np.linspace(0.0, ramp_exit_time, 20, endpoint=False)
-    t_burn = np.linspace(ramp_exit_time, burn_time, 100, endpoint=False)
-    t_coast = np.linspace(burn_time, impact_time, 400)
+    t_burn = np.linspace(ramp_exit_time, burn.t[-1], 100, endpoint=hit_ground_during_burn)  # burn.t[-1] is when the burn run stopped
+    times = [t_ramp, t_burn]
+    states = [ramp.sol(t_ramp), burn.sol(t_burn)]
+    if not hit_ground_during_burn:
+        t_coast = np.linspace(burn_time, impact_time, 400)
+        times.append(t_coast)
+        states.append(coast.sol(t_coast))
 
     return {
         "ramp_exit_time": ramp_exit_time,
         "ramp_exit_state": ramp_exit_state,
-        "burnout_time": burn_time,
-        "burnout_state": burnout_state,
-        "apogee_time": coast.t_events[1][0],
-        "apogee_state": coast.y_events[1][0],
+        "burnout_time": burnout_time,    # None if the rocket hit the ground before burnout
+        "burnout_state": burnout_state,  # None too
+        "apogee_time": apogee_phase.t_events[1][0],
+        "apogee_state": apogee_phase.y_events[1][0],
         "impact_time": impact_time,
-        "impact_state": coast.y_events[0][0],
-        "time": np.concatenate([t_ramp, t_burn, t_coast]),
-        "states": np.concatenate([ramp.sol(t_ramp), burn.sol(t_burn), coast.sol(t_coast)], axis=1),  # shape (7, times)
+        "impact_state": impact_state,
+        "time": np.concatenate(times),
+        "states": np.concatenate(states, axis=1),  # shape (7, times)
     }
 
 
@@ -140,7 +183,10 @@ def print_summary(result):
     impact_time = result["impact_time"]
 
     print(f"ramp     {ramp_exit_time:.2f} s  {np.linalg.norm(ramp_exit[3:6]):.2f} m/s")
-    print(f"burnout  {np.linalg.norm(burnout[3:6]):.2f} m/s  {burnout[2]:.1f} m  {burnout[6]:.1f} kg")
+    if burnout is None:
+        print("burnout none, hit the ground with the engine still on")
+    else:
+        print(f"burnout  {np.linalg.norm(burnout[3:6]):.2f} m/s  {burnout[2]:.1f} m  {burnout[6]:.1f} kg")
     print(f"apogee   {top[2]:.1f} m")
     print(f"impact   {impact_time:.2f} s  east {impact[0]:.1f} m  north {impact[1]:.1f} m  range {np.hypot(impact[0], impact[1]):.1f} m")
 
@@ -150,10 +196,14 @@ def plot_trajectory(result):
     time = result["time"]
     position = result["states"][:3]  # rows 0, 1, 2 of the state are x, y, z
 
+    burn_end_time = result["burnout_time"]
+    if burn_end_time is None:  # no burnout: the burn lasted until the impact
+        burn_end_time = result["impact_time"]
+
     # True/False for every time sample, used to pick the samples of one phase
     on_ramp = time <= result["ramp_exit_time"]
-    burning = (time >= result["ramp_exit_time"]) & (time <= result["burnout_time"])
-    coasting = time >= result["burnout_time"]
+    burning = (time >= result["ramp_exit_time"]) & (time <= burn_end_time)
+    coasting = time >= burn_end_time
 
     ax = plt.figure().add_subplot(projection="3d")
     ax.plot(*position[:, on_ramp], color="black", linewidth=3)
@@ -166,6 +216,8 @@ def plot_trajectory(result):
 
 def main():
     result = simulate(MOCK_ROCKET)
+    if result is None:  # the flight was discarded
+        return
     print_summary(result)
     plot_trajectory(result)
 

@@ -6,13 +6,17 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 
+# fixed number in the definition of specific impulse: thrust = mass flow * specific impulse * STANDARD_GRAVITY
+# it is not the local gravity, that one is "gravity" in the dict below
+STANDARD_GRAVITY = 9.80665  # m/s^2
+
 # every number that defines one flight; simulate() takes a dict like this one
 MOCK_ROCKET = {
     "gravity": 9.81,             # m/s^2
     "liftoff_mass": 1000.0,      # kg, structure + propellant
     "propellant_mass": 600.0,    # kg
-    "mass_flow_rate": 30.0,      # kg/s
     "thrust": 20000.0,           # N
+    "specific_impulse": 20000.0 / (30.0 * STANDARD_GRAVITY),  # s, about 68: the value that makes this engine burn 30 kg/s
     "launch_elevation": 45.0,    # degrees above the horizon
     "launch_azimuth": 45.0,      # degrees clockwise from north
     "ramp_length": 10.0,         # m
@@ -98,7 +102,7 @@ def simulate(params):
 
     launch_direction = direction_from_angles(params["launch_elevation"], params["launch_azimuth"])
     thrust = params["thrust"]
-    mdot = params["mass_flow_rate"]
+    mdot = thrust / (params["specific_impulse"] * STANDARD_GRAVITY)  # the engine's mass flow follows from its thrust and specific impulse
     burn_time = params["propellant_mass"] / mdot
     initial_state = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, params["liftoff_mass"]]
 

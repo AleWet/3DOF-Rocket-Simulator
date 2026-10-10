@@ -10,13 +10,27 @@ MASS_FLOW_RATE = 30.0
 THRUST = 20000.0          
 BURN_TIME = PROPELLANT_MASS / MASS_FLOW_RATE
 INITIAL_ANGLE = 45
+DRAG_COEFFICIENT = 0.75
+REFERENCE_AREA = 0.5
+SEA_LEVEL_DENSITY = 1.225
+SCALE_HEIGHT = 8500.0
+
+
+def air_density(altitude):
+    return SEA_LEVEL_DENSITY * np.exp(-altitude / SCALE_HEIGHT)
 
 
 def derivative(t, state, thrust, mdot):
     """state = [x, y, z, vx, vy, vz, mass], z up. Returns d(state)/dt."""
-    vx, vy, vz = state[3:6]
+    velocity = state[3:6]
+    speed = np.linalg.norm(velocity)
     m = state[-1]
-    return [vx, vy, vz, 0.0, 0.0, thrust/m - GRAVITY, -mdot]
+
+    drag = -0.5 * air_density(state[2]) * speed * DRAG_COEFFICIENT * REFERENCE_AREA * velocity
+    acceleration = drag / m
+    acceleration[2] += thrust / m - GRAVITY
+    
+    return [*velocity, *acceleration, -mdot]
 
 # ---- define states and when to fire events ----
 
@@ -58,10 +72,9 @@ flight_time = coast.t_events[0][0]
 impact = coast.y_events[0][0]
 top = coast.y_events[1][0]
 
-print(f"range       {np.hypot(impact[0], impact[1]):.2f} m")
-print(f"apogee      {top[2]:.2f} m")
-print(f"flight time {flight_time:.3f} s")
-print(f"solver steps: {coast.t.size - 1}, highest sample: {coast.y[2].max():.1f} m")
+print(f"burnout  {burnout_state[5]:.2f} m/s  {burnout_state[2]:.1f} m  {burnout_state[6]:.1f} kg")
+print(f"apogee   {top[2]:.1f} m")
+print(f"impact   {flight_time:.2f} s")
 
 # altitude over time; .sol gives the state at any time, not only at the solver's few steps
 t_burn = np.linspace(0.0, BURN_TIME, 100)

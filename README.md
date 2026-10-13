@@ -3,6 +3,9 @@
 A 3DOF (point-mass) rocket flight model in Python. One flight goes through three
 phases, ramp, burn and coast, with drag in an exponential atmosphere.
 
+This project is still in development. What is missing is listed under
+[Planned](#planned).
+
 ## Setup
 
 ```bash
@@ -31,3 +34,12 @@ This flies 1000 rockets with scattered inputs and shows where they land.
 - `rocket.py`: the flight model. `simulate(params)` flies one rocket and returns the results.
 - `monte_carlo.py`: the Monte Carlo. It scatters the inputs, calls `simulate` many times and collects the impact points.
 - `requirements.txt`: the libraries the project needs.
+
+## Planned
+
+Not implemented yet:
+
+- Wind, with drag computed from the air-relative velocity.
+- Realistic input uncertainties. The ones in `monte_carlo.py` are placeholders.
+- Impact statistics: confidence ellipses for the impact point and the probability of landing outside a safe zone.
+- Convergence analysis: how the statistics change with the number of runs.

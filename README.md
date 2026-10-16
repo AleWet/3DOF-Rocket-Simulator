@@ -23,7 +23,8 @@ python rocket.py
 ```
 
 This flies the rocket defined by `MOCK_ROCKET`, prints a summary and shows the
-trajectory in 3D.
+trajectory in 3D. The mock rocket is sized like a student competition rocket
+(30 kg, about 3 km apogee).
 
 ```bash
 python monte_carlo.py
@@ -41,7 +42,7 @@ This flies 1000 rockets with scattered inputs and shows where they land.
 
 Not implemented yet:
 
-- Wind that changes with altitude, and wind in the Monte Carlo.
+- Wind that changes with altitude.
 - Realistic input uncertainties. The ones in `monte_carlo.py` are placeholders.
 - Impact statistics: confidence ellipses for the impact point and the probability of landing outside a safe zone.
 - Convergence analysis: how the statistics change with the number of runs.

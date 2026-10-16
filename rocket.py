@@ -11,21 +11,22 @@ import matplotlib.pyplot as plt
 STANDARD_GRAVITY = 9.80665  # m/s^2
 
 # every number that defines one flight; simulate() takes a dict like this one
+# sized like a student competition rocket: about 3 km apogee, stays subsonic
 MOCK_ROCKET = {
     "gravity": 9.81,             # m/s^2
-    "liftoff_mass": 1000.0,      # kg, structure + propellant
-    "propellant_mass": 600.0,    # kg
-    "thrust": 20000.0,           # N
-    "specific_impulse": 20000.0 / (30.0 * STANDARD_GRAVITY),  # s, about 68: the value that makes this engine burn 30 kg/s
-    "launch_elevation": 80.0,    # degrees above the horizon
+    "liftoff_mass": 30.0,        # kg, structure + propellant
+    "propellant_mass": 5.0,      # kg
+    "thrust": 2000.0,            # N, thrust-to-weight about 6.8
+    "specific_impulse": 200.0,   # s, amateur solid/hybrid motor
+    "launch_elevation": 84.0,    # degrees above the horizon
     "launch_azimuth": 45.0,      # degrees clockwise from north
-    "ramp_length": 10.0,         # m
-    "drag_coefficient": 0.75,    # dimensionless
-    "reference_area": 0.5,       # m^2
+    "ramp_length": 8.0,          # m
+    "drag_coefficient": 0.45,    # dimensionless
+    "reference_area": 0.0177,    # m^2, 15 cm diameter
     "sea_level_density": 1.225,  # kg/m^3
     "scale_height": 8500.0,      # m
-    "wind_speed": 0.0,           # m/s
-    "wind_direction": 0.0,       # degrees clockwise from north, where the wind comes FROM (0 = blows toward south)
+    "wind_east": 0.0,            # m/s, velocity of the air toward east
+    "wind_north": 0.0,           # m/s, velocity of the air toward north (a 5 m/s wind from north is -5)
 }
 
 # solver settings, the same for every flight
@@ -54,8 +55,8 @@ def air_density(altitude, params):
 
 def wind_velocity(altitude, params):
     # constant for now, altitude is here for a future wind profile
-    # the wind comes from wind_direction, so the air moves the opposite way: minus sign
-    return -params["wind_speed"] * direction_from_angles(0.0, params["wind_direction"])
+    # components, not speed + direction, so the Monte Carlo can scatter them around zero wind
+    return np.array([params["wind_east"], params["wind_north"], 0.0])
 
 
 def derivative(t, state, thrust, mdot, on_ramp, launch_direction, params):

@@ -5,34 +5,45 @@ import matplotlib.pyplot as plt
 
 from rocket import simulate, MOCK_ROCKET
 
-# standard deviation of every input that gets scattered, as a fraction of its value
+# standard deviation of every input that gets scattered
 # for now all these numbers are placeholders
-SIGMAS = {
+
+# errors that grow with the input, as a fraction of its value
+RELATIVE_SIGMAS = {
     "thrust": 0.02,             # 2%
     "specific_impulse": 0.005,  # 0.5%
     "drag_coefficient": 0.05,   # 5%
     "liftoff_mass": 0.01,       # 1%
     "sea_level_density": 0.05,  # 5%
-    "launch_elevation": 0.005,  # 0.5%
-    "launch_azimuth": 0.005,    # 0.5%
+}
+
+# errors that don't, in the input's own units: a fraction of zero wind would be zero
+ABSOLUTE_SIGMAS = {
+    "launch_elevation": 0.5,    # deg
+    "launch_azimuth": 0.5,      # deg
+    "wind_east": 1.0,           # m/s
+    "wind_north": 1.0,          # m/s
 }
 
 NOMINAL_LAUNCH = dict(MOCK_ROCKET)
 RUNS = 1000
 
-def scatter(nominal, sigmas, rng):
+def scatter(nominal, relative_sigmas, absolute_sigmas, rng):
     params = dict(nominal)
-    for name in sigmas:
-        error = rng.normal(0.0, sigmas[name])
+    for name in relative_sigmas:
+        error = rng.normal(0.0, relative_sigmas[name])
         params[name] = nominal[name] * (1 + error)
+    for name in absolute_sigmas:
+        error = rng.normal(0.0, absolute_sigmas[name])
+        params[name] = nominal[name] + error
     return params
 
 
-def run_monte_carlo(nominal, sigmas, runs, rng):
+def run_monte_carlo(nominal, relative_sigmas, absolute_sigmas, runs, rng):
     impacts = []  # one row [east, north] per flight
     apogees = []  # one row [east, north, up] per flight
     for run in range(runs):
-        result = simulate(scatter(nominal, sigmas, rng))
+        result = simulate(scatter(nominal, relative_sigmas, absolute_sigmas, rng))
         if result is None:  # the flight was discarded
             continue
         impacts.append(result["impact_state"][:2])
@@ -46,7 +57,7 @@ def main():
     nominal = simulate(NOMINAL_LAUNCH)
     nominal_impact = nominal["impact_state"][:2]
     nominal_apogee = nominal["apogee_state"][:3]
-    impacts, apogees = run_monte_carlo(NOMINAL_LAUNCH, SIGMAS, RUNS, rng)
+    impacts, apogees = run_monte_carlo(NOMINAL_LAUNCH, RELATIVE_SIGMAS, ABSOLUTE_SIGMAS, RUNS, rng)
     mean = impacts.mean(axis=0)        # axis=0: one value per column, so [east, north]
     std = impacts.std(axis=0, ddof=1)  # ddof=1: divide by runs - 1, like std in MATLAB
 

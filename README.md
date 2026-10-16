@@ -1,7 +1,9 @@
 # python-rocket
 
 A 3DOF (point-mass) rocket flight model in Python. One flight goes through three
-phases, ramp, burn and coast, with drag in an exponential atmosphere.
+phases, ramp, burn and coast, with drag in an exponential atmosphere and a
+constant wind. In flight the rocket points into the airflow, so it turns into
+the wind.
 
 This project is still in development. What is missing is listed under
 [Planned](#planned).
@@ -39,7 +41,7 @@ This flies 1000 rockets with scattered inputs and shows where they land.
 
 Not implemented yet:
 
-- Wind, with drag computed from the air-relative velocity.
+- Wind that changes with altitude, and wind in the Monte Carlo.
 - Realistic input uncertainties. The ones in `monte_carlo.py` are placeholders.
 - Impact statistics: confidence ellipses for the impact point and the probability of landing outside a safe zone.
 - Convergence analysis: how the statistics change with the number of runs.

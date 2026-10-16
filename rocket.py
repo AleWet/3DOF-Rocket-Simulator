@@ -24,6 +24,8 @@ MOCK_ROCKET = {
     "reference_area": 0.5,       # m^2
     "sea_level_density": 1.225,  # kg/m^3
     "scale_height": 8500.0,      # m
+    "wind_speed": 0.0,           # m/s
+    "wind_direction": 0.0,       # degrees clockwise from north, where the wind comes FROM (0 = blows toward south)
 }
 
 # solver settings, the same for every flight
@@ -32,7 +34,7 @@ MOCK_ROCKET = {
 SOLVER_TOLERANCE = 1e-6
 MAX_FLIGHT_TIME = 1000.0  # s, upper limit for the coast phase
 
-# there is always a ramp: in flight the thrust follows the velocity, and the ramp gives the rocket its first one
+# there is always a ramp: in flight the thrust follows the velocity through the air, and the ramp gives the rocket its first one
 MIN_RAMP_LENGTH = 3.0  # m
 
 
@@ -50,19 +52,28 @@ def air_density(altitude, params):
     return params["sea_level_density"] * np.exp(-altitude / params["scale_height"])
 
 
+def wind_velocity(altitude, params):
+    # constant for now, altitude is here for a future wind profile
+    # the wind comes from wind_direction, so the air moves the opposite way: minus sign
+    return -params["wind_speed"] * direction_from_angles(0.0, params["wind_direction"])
+
+
 def derivative(t, state, thrust, mdot, on_ramp, launch_direction, params):
     """state = [x, y, z, vx, vy, vz, mass], x east, y north, z up. Returns d(state)/dt."""
     velocity = state[3:6]
-    speed = np.linalg.norm(velocity)
+    air_velocity = velocity - wind_velocity(state[2], params)  # how the rocket moves through the air
+    air_speed = np.linalg.norm(air_velocity)
     m = state[-1]
 
-    if on_ramp or speed == 0.0:
-        thrust_direction = launch_direction  # on the ramp, or at rest, there is no velocity to follow this should happen only on ramp
+    if on_ramp or air_speed == 0.0:
+        thrust_direction = launch_direction  # on the ramp, or at rest in still air, there is no airflow to follow
     else:
-        thrust_direction = velocity / speed  # in flight the thrust follows the velocity
+        # in flight the rocket points into the airflow (weathercocking), so with wind it turns into the wind
+        thrust_direction = air_velocity / air_speed
 
-    drag = (-0.5 * air_density(state[2], params) * speed
-            * params["drag_coefficient"] * params["reference_area"] * velocity)
+    # drag comes from the motion through the air, not over the ground
+    drag = (-0.5 * air_density(state[2], params) * air_speed
+            * params["drag_coefficient"] * params["reference_area"] * air_velocity)
     acceleration = (drag + thrust * thrust_direction) / m
     acceleration[2] -= params["gravity"]
 
@@ -71,7 +82,7 @@ def derivative(t, state, thrust, mdot, on_ramp, launch_direction, params):
         # max(..., 0.0): the bottom of the ramp holds the rocket, so it cannot slide backwards
         acceleration = max(np.dot(acceleration, launch_direction), 0.0) * launch_direction
 
-    return [*velocity, *acceleration, -mdot]
+    return [*velocity, *acceleration, -mdot]  # position moves with the ground velocity, not the air one
 
 # ---- define events and when they fire ----
 # the solver calls them with the same arguments as derivative

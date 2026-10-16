@@ -1,5 +1,3 @@
-"""3DOF point-mass rocket: one flight from the ramp to the impact."""
-
 import warnings
 
 import numpy as np
